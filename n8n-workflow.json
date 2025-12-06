@@ -1,0 +1,101 @@
+{
+  "name": "AfyaGuard Healthcare Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 1,
+              "unit": "minutes"
+            }
+          ]
+        }
+      },
+      "name": "Every 1 Minute",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [300, 300]
+    },
+    {
+      "parameters": {
+        "resource": "search",
+        "index": "filebeat-*",
+        "query": "{\"query\":{\"bool\":{\"must\":[{\"range\":{\"@timestamp\":{\"gte\":\"now-5m\"}}},{\"bool\":{\"should\":[{\"wildcard\":{\"file.name.keyword\":\"*marks*\"}},{\"wildcard\":{\"file.name.keyword\":\"*exam*\"}},{\"wildcard\":{\"file.name.keyword\":\"*patient*\"}},{\"match_phrase\":{\"file.ext\":\"xlsx\"}}],\"minimum_should_match\":1}}]}},\"size\":10}"
+      },
+      "name": "Elasticsearch Search",
+      "type": "n8n-nodes-base.elasticsearch",
+      "typeVersion": 1,
+      "position": [500, 300],
+      "credentials": {
+        "elasticsearchApi": "Local Elasticsearch (no auth)"
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json[\"hits\"][\"total\"][\"value\"]}}",
+              "operation": "greaterThan",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "name": "If Threat Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "afyaguard@chuka.ac.ke",
+        "toEmail": "YOUR_EMAIL@gmail.com",
+        "subject": "AfyaGuard ALERT – Sensitive File Activity",
+        "text": "ALERT: Suspicious file activity detected!\n\nFile: {{$json[\"hits\"][\"hits\"][0][\"_source\"][\"file\"][\"name\"]}}\nSource IP: {{$json[\"hits\"][\"hits\"][0][\"_source\"][\"source\"][\"ip\"]}}\nTime: {{$json[\"hits\"][\"hits\"][0][\"_source\"][\"@timestamp\"]}}\n\nIsolate the device immediately!"
+      },
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "phoneNumber": "+2547XXXXXXXX",   // ← CHANGE THIS TO YOUR NUMBER
+        "message": "AfyaGuard ALERT!\nFile: {{$json[\"hits\"][\"hits\"][0][\"_source\"][\"file\"][\"name\"]}}\nFrom IP: {{$json[\"hits\"][\"hits\"][0][\"_source\"][\"source\"][\"ip\"]}}\nAct NOW!"
+      },
+      "name": "SMS via Africa's Talking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [900, 350],
+      "credentials": {
+        "httpBasicAuth": "Africa's Talking"
+      },
+      "options": {
+        "bodyContentType": "form-urlencoded",
+        "bodyParametersUi": {
+          "parameter": [
+            { "name": "username", "value": "afyaguard" },
+            { "name": "to", "value": "+2547XXXXXXXX" },
+            { "name": "message", "value": "={{$json.text}}" }
+          ]
+        },
+        "url": "https://api.africastalking.com/version1/messaging"
+      }
+    }
+  ],
+  "connections": {
+    "Every 1 Minute": { "main": [[{ "node": "Elasticsearch Search", "type": "main", "index": 0 }]] },
+    "Elasticsearch Search": { "main": [[{ "node": "If Threat Found", "type": "main", "index": 0 }]] },
+    "If Threat Found": {
+      "main": [
+        [{ "node": "Send Email", "type": "main", "index": 0 }],
+        [{ "node": "SMS via Africa's Talking", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}
